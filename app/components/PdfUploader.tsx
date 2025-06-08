@@ -1,63 +1,31 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import type {
-  TextItem,
-  TextMarkedContent,
-} from "pdfjs-dist/types/src/display/api";
-import * as PDFJS from "pdfjs-dist";
+import { useState, useRef } from "react";
+import { FiUpload, FiX } from "react-icons/fi";
+import * as pdfjsLib from "pdfjs-dist";
+import { useDocuments } from "../contexts/DocumentContext";
 
-// Initialize pdfjsLib outside component to ensure it's available
-let pdfjsLib: typeof PDFJS;
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
-interface PdfUploaderProps {
-  onTextExtracted?: (text: string) => void;
-}
-
-export default function PdfUploader({ onTextExtracted }: PdfUploaderProps) {
-  const [pdfText, setPdfText] = useState<string>("");
+export default function PdfUploader() {
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [isInitialized, setIsInitialized] = useState(false);
+  const { addDocument } = useDocuments();
 
-  useEffect(() => {
-    const initializePdfJs = async () => {
-      try {
-        // Import the main library
-        const pdfjs = await import("pdfjs-dist");
-        // Set the worker source
-        pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
-        // Store the library instance
-        pdfjsLib = pdfjs;
-        setIsInitialized(true);
-      } catch (error) {
-        console.error("Failed to initialize PDF.js:", error);
-        setPdfText(
-          "Failed to initialize PDF reader. Please try refreshing the page."
-        );
-      }
-    };
+  const handleFileChange = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
 
-    if (!isInitialized) {
-      initializePdfJs();
-    }
-  }, [isInitialized]);
-
-  const extractTextFromPdf = async (file: File) => {
-    if (!isInitialized || !pdfjsLib) {
-      setPdfText("PDF.js is still initializing. Please try again in a moment.");
-      return;
-    }
+    setIsLoading(true);
+    setError(null);
 
     try {
-      setIsLoading(true);
-
-      // Read the file as ArrayBuffer
+      // Load the PDF file
       const arrayBuffer = await file.arrayBuffer();
-
-      // Load the PDF document using the initialized library
-      const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
-      const pdf = await loadingTask.promise;
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
       // Extract text from all pages
       let fullText = "";
@@ -65,71 +33,84 @@ export default function PdfUploader({ onTextExtracted }: PdfUploaderProps) {
         const page = await pdf.getPage(i);
         const textContent = await page.getTextContent();
         const pageText = textContent.items
-          .map((item: TextItem | TextMarkedContent) =>
-            "str" in item ? item.str : ""
-          )
+          .map((item: any) => item.str)
           .join(" ");
-        fullText += pageText + "\n\n";
+        fullText += pageText + "\n";
       }
 
-      const trimmedText = fullText.trim();
-      setPdfText(trimmedText);
-      onTextExtracted?.(trimmedText);
-    } catch (error) {
-      console.error("Error extracting text:", error);
-      setPdfText("Error extracting text from PDF. Please try again.");
+      // Create a new document
+      const newDocument = {
+        id: Date.now().toString(),
+        name: file.name,
+        type: "pdf" as const,
+        tags: [],
+        createdAt: new Date(),
+        folderId: null,
+        content: fullText,
+      };
+
+      addDocument(newDocument);
+
+      // Reset the file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    } catch (err) {
+      setError("Error processing PDF file. Please try again.");
+      console.error("PDF processing error:", err);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file && file.type === "application/pdf") {
-      extractTextFromPdf(file);
-    } else {
-      setPdfText("Please select a valid PDF file");
-    }
-  };
-
   return (
-    <div className="max-w-4xl mx-auto p-6">
-      <div className="mb-6">
-        <label htmlFor="pdf-upload" className="block text-lg font-medium mb-4">
-          Upload PDF
+    <div className="p-6 bg-white rounded-lg shadow-sm">
+      <div className="flex items-center justify-center w-full">
+        <label
+          htmlFor="pdf-upload"
+          className={`flex flex-col items-center justify-center w-full h-64 border-2 border-dashed rounded-lg cursor-pointer
+            ${
+              isLoading
+                ? "bg-gray-50 border-gray-300"
+                : "hover:bg-gray-50 border-gray-300 hover:border-gray-400"
+            }
+          `}
+        >
+          <div className="flex flex-col items-center justify-center pt-5 pb-6">
+            {isLoading ? (
+              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500" />
+            ) : (
+              <>
+                <FiUpload className="w-10 h-10 mb-3 text-gray-400" />
+                <p className="mb-2 text-sm text-gray-500">
+                  <span className="font-semibold">Click to upload</span> or drag
+                  and drop
+                </p>
+                <p className="text-xs text-gray-500">PDF files only</p>
+              </>
+            )}
+          </div>
+          <input
+            ref={fileInputRef}
+            id="pdf-upload"
+            type="file"
+            accept=".pdf"
+            className="hidden"
+            onChange={handleFileChange}
+            disabled={isLoading}
+          />
         </label>
-        <input
-          ref={fileInputRef}
-          id="pdf-upload"
-          type="file"
-          accept=".pdf"
-          onChange={handleFileChange}
-          disabled={!isInitialized}
-          className="block w-full text-sm text-gray-500
-            file:mr-4 file:py-2 file:px-4
-            file:rounded-md file:border-0
-            file:text-sm file:font-semibold
-            file:bg-blue-50 file:text-blue-700
-            hover:file:bg-blue-100
-            disabled:opacity-50 disabled:cursor-not-allowed"
-        />
-        {!isInitialized && (
-          <p className="mt-2 text-sm text-gray-500">
-            Initializing PDF reader...
-          </p>
-        )}
       </div>
 
-      {isLoading && (
-        <div className="my-4 text-gray-600">Extracting text from PDF...</div>
-      )}
-
-      {pdfText && !isLoading && (
-        <div className="mt-6">
-          <h2 className="text-lg font-medium mb-3">Extracted Text:</h2>
-          <div className="p-4 bg-gray-50 text-black rounded-lg whitespace-pre-wrap">
-            {pdfText}
-          </div>
+      {error && (
+        <div className="mt-4 p-4 bg-red-50 rounded-lg flex items-center justify-between">
+          <p className="text-red-800 text-sm">{error}</p>
+          <button
+            onClick={() => setError(null)}
+            className="text-red-800 hover:text-red-900"
+          >
+            <FiX />
+          </button>
         </div>
       )}
     </div>

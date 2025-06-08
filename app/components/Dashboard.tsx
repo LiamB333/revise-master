@@ -1,177 +1,96 @@
 "use client";
 
 import { useState } from "react";
-import PdfUploader from "./PdfUploader";
+import { Tab } from "@headlessui/react";
+import { FiPlus, FiFilter } from "react-icons/fi";
+import FileExplorer from "./FileExplorer";
 import Flashcards from "./Flashcards";
 import Summary from "./Summary";
 import Quiz from "./Quiz";
 
-type Tab = "upload" | "flashcards" | "summary" | "quiz";
-
-interface Flashcard {
-  front: string;
-  back: string;
-}
-
-interface QuizQuestion {
-  question: string;
-  options: string[];
-  correctAnswer: string;
-  explanation: string;
+function classNames(...classes: string[]) {
+  return classes.filter(Boolean).join(" ");
 }
 
 export default function Dashboard() {
-  const [activeTab, setActiveTab] = useState<Tab>("upload");
-  const [extractedText, setExtractedText] = useState<string>("");
-  const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
-  const [summary, setSummary] = useState<string>("");
-  const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
-  const [isGeneratingFlashcards, setIsGeneratingFlashcards] = useState(false);
-  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
-  const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false);
+  const [selectedTab, setSelectedTab] = useState(0);
 
   const tabs = [
-    { id: "upload" as Tab, name: "Upload PDF", icon: "📄" },
-    { id: "flashcards" as Tab, name: "Flashcards", icon: "🎴" },
-    { id: "summary" as Tab, name: "Summary", icon: "📝" },
-    { id: "quiz" as Tab, name: "Quiz", icon: "❓" },
+    {
+      name: "File Explorer",
+      component: <FileExplorer onDocumentSelect={() => {}} />,
+    },
+    {
+      name: "Flashcards",
+      component: <Flashcards documentId={null} />,
+    },
+    {
+      name: "Summary",
+      component: <Summary documentId={null} />,
+    },
+    {
+      name: "Quiz",
+      component: <Quiz documentId={null} />,
+    },
   ];
 
-  const handleTextExtracted = async (text: string) => {
-    setExtractedText(text);
-    await Promise.all([
-      generateFlashcards(text),
-      generateSummary(text),
-      generateQuiz(text),
-    ]);
-  };
-
-  const generateFlashcards = async (text: string) => {
-    setIsGeneratingFlashcards(true);
-    try {
-      const response = await fetch("/api/generate-flashcards", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ text }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to generate flashcards");
-      }
-
-      const data = await response.json();
-      setFlashcards(data.flashcards);
-    } catch (error) {
-      console.error("Error generating flashcards:", error);
-    } finally {
-      setIsGeneratingFlashcards(false);
-    }
-  };
-
-  const generateSummary = async (text: string) => {
-    setIsGeneratingSummary(true);
-    try {
-      const response = await fetch("/api/generate-summary", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ text }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to generate summary");
-      }
-
-      const data = await response.json();
-      setSummary(data.summary);
-    } catch (error) {
-      console.error("Error generating summary:", error);
-    } finally {
-      setIsGeneratingSummary(false);
-    }
-  };
-
-  const generateQuiz = async (text: string) => {
-    setIsGeneratingQuiz(true);
-    try {
-      const response = await fetch("/api/generate-quiz", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ text }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to generate quiz");
-      }
-
-      const data = await response.json();
-      setQuizQuestions(data.quiz);
-    } catch (error) {
-      console.error("Error generating quiz:", error);
-    } finally {
-      setIsGeneratingQuiz(false);
-    }
-  };
-
   return (
-    <div className="bg-white rounded-lg shadow">
-      {/* Tab Navigation */}
-      <div className="border-b border-gray-200">
-        <nav className="flex -mb-px" aria-label="Tabs">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`
-                w-1/4 py-4 px-1 text-center border-b-2 font-medium text-sm
-                ${
-                  activeTab === tab.id
-                    ? "border-blue-500 text-blue-600"
-                    : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                }
-              `}
-            >
-              <span className="mr-2">{tab.icon}</span>
-              {tab.name}
+    <div className="p-6">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-semibold text-gray-900">
+              Study Materials
+            </h1>
+            <p className="mt-1 text-sm text-gray-500">
+              Manage and study your documents
+            </p>
+          </div>
+          <div className="flex items-center space-x-3">
+            <button className="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+              <FiFilter className="w-4 h-4 mr-2" />
+              Filter
             </button>
-          ))}
-        </nav>
-      </div>
-
-      {/* Tab Content */}
-      <div className="p-6">
-        {activeTab === "upload" && (
-          <div>
-            <h2 className="text-xl font-semibold mb-4">Upload Your PDF</h2>
-            <PdfUploader onTextExtracted={handleTextExtracted} />
+            <button className="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-gradient-to-r from-indigo-600 to-purple-600 rounded-lg hover:from-indigo-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+              <FiPlus className="w-4 h-4 mr-2" />
+              Add Document
+            </button>
           </div>
-        )}
+        </div>
 
-        {activeTab === "flashcards" && (
-          <div>
-            <h2 className="text-xl font-semibold mb-4">Flashcards</h2>
-            <Flashcards cards={flashcards} />
-          </div>
-        )}
-
-        {activeTab === "summary" && (
-          <div>
-            <h2 className="text-xl font-semibold mb-4">Summary</h2>
-            <Summary summary={summary} isLoading={isGeneratingSummary} />
-          </div>
-        )}
-
-        {activeTab === "quiz" && (
-          <div>
-            <h2 className="text-xl font-semibold mb-4">Quiz</h2>
-            <Quiz questions={quizQuestions} isLoading={isGeneratingQuiz} />
-          </div>
-        )}
+        <Tab.Group selectedIndex={selectedTab} onChange={setSelectedTab}>
+          <Tab.List className="flex space-x-2 rounded-xl bg-white p-1 border border-gray-200">
+            {tabs.map((tab) => (
+              <Tab
+                key={tab.name}
+                className={({ selected }) =>
+                  classNames(
+                    "w-full rounded-lg py-2.5 text-sm font-medium leading-5 transition-all",
+                    "focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500",
+                    selected
+                      ? "bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow"
+                      : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                  )
+                }
+              >
+                {tab.name}
+              </Tab>
+            ))}
+          </Tab.List>
+          <Tab.Panels className="mt-4">
+            {tabs.map((tab, idx) => (
+              <Tab.Panel
+                key={idx}
+                className={classNames(
+                  "rounded-xl bg-white p-4 shadow-sm border border-gray-200",
+                  "focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                )}
+              >
+                {tab.component}
+              </Tab.Panel>
+            ))}
+          </Tab.Panels>
+        </Tab.Group>
       </div>
     </div>
   );

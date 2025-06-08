@@ -1,6 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useDocuments } from "../contexts/DocumentContext";
+
+interface QuizProps {
+  documentId: string | null;
+}
 
 interface QuizQuestion {
   question: string;
@@ -9,158 +14,164 @@ interface QuizQuestion {
   explanation: string;
 }
 
-interface QuizProps {
-  questions: QuizQuestion[];
-  isLoading: boolean;
-}
-
-export default function Quiz({ questions, isLoading }: QuizProps) {
+export default function Quiz({ documentId }: QuizProps) {
+  const [questions, setQuestions] = useState<QuizQuestion[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [selectedAnswers, setSelectedAnswers] = useState<string[]>(
-    Array(questions.length).fill("")
-  );
+  const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [showExplanation, setShowExplanation] = useState(false);
-  const [quizSubmitted, setQuizSubmitted] = useState(false);
+  const [score, setScore] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const { documents } = useDocuments();
 
-  if (isLoading) {
-    return <div className="text-center text-black">Generating quiz...</div>;
+  useEffect(() => {
+    if (!documentId) return;
+
+    const document = documents.find((doc) => doc.id === documentId);
+    if (!document) return;
+
+    const generateQuiz = async () => {
+      setIsLoading(true);
+      try {
+        const response = await fetch("/api/generate-quiz", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ text: document.content }),
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to generate quiz");
+        }
+
+        const data = await response.json();
+        setQuestions(data.quiz);
+      } catch (error) {
+        console.error("Error generating quiz:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    generateQuiz();
+  }, [documentId, documents]);
+
+  const handleAnswerSelect = (answer: string) => {
+    setSelectedAnswer(answer);
+    setShowExplanation(true);
+    if (answer === questions[currentQuestionIndex].correctAnswer) {
+      setScore(score + 1);
+    }
+  };
+
+  const handleNextQuestion = () => {
+    if (currentQuestionIndex < questions.length - 1) {
+      setCurrentQuestionIndex(currentQuestionIndex + 1);
+      setSelectedAnswer(null);
+      setShowExplanation(false);
+    }
+  };
+
+  const handleRestartQuiz = () => {
+    setCurrentQuestionIndex(0);
+    setSelectedAnswer(null);
+    setShowExplanation(false);
+    setScore(0);
+  };
+
+  if (!documentId) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-gray-500">Please select a document to study</p>
+      </div>
+    );
   }
 
-  if (!questions || questions.length === 0) {
+  if (isLoading) {
     return (
-      <div className="text-center text-black">
-        No quiz available. Upload a PDF to generate a quiz.
+      <div className="flex justify-center items-center py-12">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500" />
+      </div>
+    );
+  }
+
+  if (questions.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-gray-500">No quiz questions available</p>
       </div>
     );
   }
 
   const currentQuestion = questions[currentQuestionIndex];
-
-  const handleAnswerSelect = (answer: string) => {
-    if (quizSubmitted) return;
-
-    const newAnswers = [...selectedAnswers];
-    newAnswers[currentQuestionIndex] = answer;
-    setSelectedAnswers(newAnswers);
-    setShowExplanation(true);
-  };
-
-  const handleNext = () => {
-    if (currentQuestionIndex < questions.length - 1) {
-      setCurrentQuestionIndex(currentQuestionIndex + 1);
-      setShowExplanation(false);
-    }
-  };
-
-  const handlePrevious = () => {
-    if (currentQuestionIndex > 0) {
-      setCurrentQuestionIndex(currentQuestionIndex - 1);
-      setShowExplanation(false);
-    }
-  };
-
-  const handleSubmit = () => {
-    setQuizSubmitted(true);
-    setShowExplanation(true);
-  };
-
-  const getScore = () => {
-    return questions.reduce((score, question, index) => {
-      return (
-        score + (selectedAnswers[index] === question.correctAnswer ? 1 : 0)
-      );
-    }, 0);
-  };
+  const isLastQuestion = currentQuestionIndex === questions.length - 1;
+  const isQuizComplete = showExplanation && isLastQuestion;
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <div className="mb-4 text-sm text-black">
-        Question {currentQuestionIndex + 1} of {questions.length}
+    <div className="max-w-3xl mx-auto p-6">
+      <div className="mb-6 flex justify-between items-center">
+        <span className="text-sm text-gray-500">
+          Question {currentQuestionIndex + 1} of {questions.length}
+        </span>
+        <span className="text-sm text-gray-500">
+          Score: {score} / {questions.length}
+        </span>
       </div>
 
-      <div className="mb-6">
-        <h3 className="text-lg font-medium mb-4 text-black">{currentQuestion.question}</h3>
-        <div className="space-y-2">
+      <div className="mb-8">
+        <h3 className="text-lg font-medium mb-4 text-black">
+          {currentQuestion.question}
+        </h3>
+        <div className="space-y-3">
           {currentQuestion.options.map((option, index) => (
             <button
               key={index}
-              onClick={() => handleAnswerSelect(option)}
-              className={`w-full text-left p-3 rounded-lg border text-black ${
-                selectedAnswers[currentQuestionIndex] === option
-                  ? quizSubmitted
+              onClick={() => !selectedAnswer && handleAnswerSelect(option)}
+              disabled={!!selectedAnswer}
+              className={`
+                w-full p-4 text-left rounded-lg border transition-colors
+                ${
+                  selectedAnswer
                     ? option === currentQuestion.correctAnswer
                       ? "bg-green-100 border-green-500"
-                      : "bg-red-100 border-red-500"
-                    : "bg-blue-100 border-blue-500"
-                  : "border-gray-300 hover:border-blue-500"
-              }`}
-              disabled={quizSubmitted}
+                      : option === selectedAnswer
+                      ? "bg-red-100 border-red-500"
+                      : "bg-white border-gray-200"
+                    : "hover:bg-gray-50 border-gray-200"
+                }
+              `}
             >
-              {option}
+              <span className="text-black">{option}</span>
             </button>
           ))}
         </div>
       </div>
 
-      {showExplanation && selectedAnswers[currentQuestionIndex] && (
-        <div
-          className={`p-4 rounded-lg mb-4 ${
-            quizSubmitted &&
-            selectedAnswers[currentQuestionIndex] ===
-              currentQuestion.correctAnswer
-              ? "bg-green-50 text-green-800"
-              : "bg-blue-50 text-blue-800"
-          }`}
-        >
-          <p className="font-medium mb-2">
-            {quizSubmitted
-              ? selectedAnswers[currentQuestionIndex] ===
-                currentQuestion.correctAnswer
-                ? "✅ Correct!"
-                : `❌ Incorrect. The correct answer is: ${currentQuestion.correctAnswer}`
-              : "Explanation:"}
-          </p>
-          <p>{currentQuestion.explanation}</p>
+      {showExplanation && (
+        <div className="mb-8 p-4 bg-blue-50 rounded-lg">
+          <p className="text-blue-800">{currentQuestion.explanation}</p>
         </div>
       )}
 
-      <div className="flex justify-between mt-6">
-        <button
-          onClick={handlePrevious}
-          disabled={currentQuestionIndex === 0}
-          className="px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Previous
-        </button>
-
-        {currentQuestionIndex === questions.length - 1 ? (
+      <div className="flex justify-end">
+        {isQuizComplete ? (
           <button
-            onClick={handleSubmit}
-            disabled={quizSubmitted || selectedAnswers.includes("")}
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={handleRestartQuiz}
+            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
           >
-            Submit Quiz
+            Restart Quiz
           </button>
         ) : (
-          <button
-            onClick={handleNext}
-            disabled={currentQuestionIndex === questions.length - 1}
-            className="px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Next
-          </button>
+          showExplanation && (
+            <button
+              onClick={handleNextQuestion}
+              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
+            >
+              Next Question
+            </button>
+          )
         )}
       </div>
-
-      {quizSubmitted && (
-        <div className="mt-8 p-4 bg-blue-50 rounded-lg">
-          <h3 className="text-lg font-medium mb-2">Quiz Results</h3>
-          <p className="text-black">
-            You scored {getScore()} out of {questions.length} (
-            {Math.round((getScore() / questions.length) * 100)}%)
-          </p>
-        </div>
-      )}
     </div>
   );
 }
